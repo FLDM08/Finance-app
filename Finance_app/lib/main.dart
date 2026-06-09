@@ -264,7 +264,6 @@ class _MainScreenState extends State<MainScreen> {
                           },
                           child: Card(
                             margin: const EdgeInsets.symmetric(vertical: 6.0),
-                            child: ListTile,
                             child: ListTile(
                               leading: CircleAvatar(
                                 backgroundColor: item.isExpense ? Colors.redAccent : Colors.greenAccent.shade700,
@@ -313,7 +312,7 @@ class _MainScreenState extends State<MainScreen> {
                   }
                 },
                 icon: const Icon(Icons.add_card, size: 28),
-                title: const Text(
+                label: const Text(
                   'Novo Registro (Ganho/Gasto)', 
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
@@ -376,7 +375,7 @@ class _FormScreenState extends State<FormScreen> {
                       label: const Text('Gasto (Saída)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: operationIsExpense ? Colors.redAccent : Colors.grey.shade200,
-                        foregroundColor: operationIsExpense ? Colors.white : Colors.black80,
+                        foregroundColor: operationIsExpense ? Colors.white : Colors.black,
                         elevation: operationIsExpense ? 4 : 0,
                       ),
                     ),
@@ -392,7 +391,7 @@ class _FormScreenState extends State<FormScreen> {
                       label: const Text('Ganho (Entrada)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: !operationIsExpense ? Colors.green.shade600 : Colors.grey.shade200,
-                        foregroundColor: !operationIsExpense ? Colors.white : Colors.black80,
+                        foregroundColor: !operationIsExpense ? Colors.white : Colors.black,
                         elevation: !operationIsExpense ? 4 : 0,
                       ),
                     ),

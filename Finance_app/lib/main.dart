@@ -217,7 +217,7 @@ class _MainScreenState extends State<MainScreen> {
           onDestinationSelected: (index) {
             setState(() {
               currentTab = index;
-              loadFinancialData(); // Força a atualização síncrona dos dados ao alternar abas
+              loadFinancialData();
             });
           },
           destinations: const [

@@ -25,7 +25,7 @@ The app itself is in portuguese, but the comments are all in english.
 
 The core implementation prioritizes privacy and performance by working **100% offline**. 
 
-- Data types are structured under a unified `Transacao` model with a boolean evaluator (`isGasto`) to avoid redundant database schemas.
+- Data types are structured under a unified `Transaction` model with a boolean evaluator (`isExpense`) to avoid redundant database schemas.
 - Before rendering charts, the system processes raw transaction values using a HashMap-based aggregation logic to prevent visual clutter and guarantee data clarity.
 ## 💻 Getting Started
 

@@ -35,28 +35,25 @@ Make sure you have the Flutter SDK installed and configured on your machine.
 ### Installation
 1. Clone the repository:
 ```bash
-   git clone [https://github.com/FLDM08/Finance-app.git](https://github.com/FLDM08/Finance-app.git)
+   git clone https://github.com/FLDM08/Finance-app.git
+```
 
-    Navigate to the project directory:
-
-Bash
-
+2. Navigate to the project directory:
+```bash
    cd Finance-app
+```
 
-    Fetch dependencies:
-
-Bash
-
+3. Fetch dependencies:
+```bash
    flutter pub get
-
-    Run code generation for Hive adapters:
-
-Bash
-
+```
+   
+4. Run code generation for Hive adapters:
+```bash
    flutter pub run build_runner build --delete-conflicting-outputs
-
-    Launch the application:
-
-Bash
-
+```
+   
+5. Launch the application:
+```bash
    flutter run
+```

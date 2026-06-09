@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  runApp(const AccessibleFinanceApp());
+void main() async {
+  // Ensures engine services (like local storage device interfaces) are ready before running the app
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initializes SharedPreferences and fetches persistent username if available
+  final prefs = await SharedPreferences.getInstance();
+  final String? savedUsername = prefs.getString('username_key');
+
+  runApp(AccessibleFinanceApp(username: savedUsername));
 }
 
-// Data model representing an expense entry
+// Data model representing an expense entry with timestamp details
 class Expense {
   final String name;
   final double amount;
+  final DateTime date;
 
-  Expense({required this.name, required this.amount});
+  Expense({required this.name, required this.amount, required this.date});
 }
 
 class AccessibleFinanceApp extends StatelessWidget {
-  const AccessibleFinanceApp({super.key});
+  final String? username; // Passed down from initial async main thread lifecycle
+
+  const AccessibleFinanceApp({super.key, this.username});
 
   @override
   Widget build(BuildContext context) {
@@ -24,20 +35,105 @@ class AccessibleFinanceApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const MainScreen(),
+      // Routine evaluation: Decides whether to onboarding flow or direct system routing
+      home: username == null ? const OnboardingScreen() : MainScreen(username: username!),
+    );
+  }
+}
+
+// Onboarding flow view to secure profile initialization on first boot
+class OnboardingScreen extends StatefulWidget {
+  const OnboardingScreen({super.key});
+
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends State<OnboardingScreen> {
+  final TextEditingController usernameController = TextEditingController();
+
+  void saveProfile() async {
+    String username = usernameController.text.trim();
+    if (username.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text('Por favor, digite seu nome.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ),
+      );
+      return;
+    }
+
+    // Persists the primitive data block securely within local preferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('username_key', username);
+
+    // Forces persistent page routing avoiding backtracking stack vulnerabilities
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => MainScreen(username: username)),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Boas-vindas ao seu gerenciador financeiro!',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue),
+            ),
+            const SizedBox(height: 15),
+            const Text(
+              'Como podemos chamar você?',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 15),
+            TextField(
+              controller: usernameController,
+              style: const TextStyle(fontSize: 20),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Digite seu nome aqui...',
+              ),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: ElevatedButton(
+                onPressed: saveProfile,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Começar', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final String username; 
+
+  const MainScreen({super.key, required this.username});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  // Mock initial balance
   double balance = 1500.00;
   List<Expense> expenseHistory = [];
 
@@ -56,13 +152,12 @@ class _MainScreenState extends State<MainScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Olá, Bem-vindo(a)!',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            Text(
+              'Olá, ${widget.username}!',
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20), 
             
-            // Balance display card
             Card(
               elevation: 4,
               color: Colors.blue.shade50,
@@ -91,7 +186,6 @@ class _MainScreenState extends State<MainScreen> {
             ),
             const SizedBox(height: 10),
 
-            // Dynamic expense tracker list
             Expanded(
               child: expenseHistory.isEmpty
                   ? const Center(
@@ -104,6 +198,10 @@ class _MainScreenState extends State<MainScreen> {
                       itemCount: expenseHistory.length,
                       itemBuilder: (context, index) {
                         final item = expenseHistory[index];
+                        String day = item.date.day.toString().padLeft(2, '0');
+                        String month = item.date.month.toString().padLeft(2, '0');
+                        String formattedDate = "$day/$month";
+
                         return Card(
                           margin: const EdgeInsets.symmetric(vertical: 6.0),
                           child: ListTile(
@@ -114,6 +212,10 @@ class _MainScreenState extends State<MainScreen> {
                             title: Text(
                               item.name,
                               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            ),
+                            subtitle: Text(
+                              "Adicionado em $formattedDate",
+                              style: const TextStyle(fontSize: 16, color: Colors.grey),
                             ),
                             trailing: Text(
                               '- R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
@@ -126,7 +228,6 @@ class _MainScreenState extends State<MainScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Navigation button to launch the expense creation form
             SizedBox(
               width: double.infinity, 
               height: 60, 
@@ -137,7 +238,6 @@ class _MainScreenState extends State<MainScreen> {
                     MaterialPageRoute(builder: (context) => const FormScreen()),
                   );
 
-                  // Update application state if a valid Expense object is returned
                   if (result != null && result is Expense) {
                     setState(() {
                       balance = balance - result.amount;
@@ -222,11 +322,9 @@ class FormScreen extends StatelessWidget {
               height: 60,
               child: ElevatedButton(
                 onPressed: () {
-                  // Parses local text format safely into numeric double data type
                   double? parsedAmount = double.tryParse(amountController.text.replaceAll(',', '.'));
                   String parsedName = nameController.text.trim().isEmpty ? "Gasto Geral" : nameController.text;
                   
-                  // Form validation logic to avoid corrupted states or zero values
                   if (parsedAmount == null || parsedAmount <= 0) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -239,10 +337,9 @@ class FormScreen extends StatelessWidget {
                       ),
                     );
                   } else {
-                    // Pops the route stack returning the configured object
                     Navigator.pop(
                       context, 
-                      Expense(name: parsedName, amount: parsedAmount),
+                      Expense(name: parsedName, amount: parsedAmount, date: DateTime.now()),
                     );
                   }
                 },

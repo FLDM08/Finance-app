@@ -1,0 +1,264 @@
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const AccessibleFinanceApp());
+}
+
+// Data model representing an expense entry
+class Expense {
+  final String name;
+  final double amount;
+
+  Expense({required this.name, required this.amount});
+}
+
+class AccessibleFinanceApp extends StatelessWidget {
+  const AccessibleFinanceApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Finanças Acessíveis',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+      ),
+      home: const MainScreen(),
+    );
+  }
+}
+
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  // Mock initial balance
+  double balance = 1500.00;
+  List<Expense> expenseHistory = [];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        title: const Text(
+          'Meu Dinheiro', 
+          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Olá, Bem-vindo(a)!',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20), 
+            
+            // Balance display card
+            Card(
+              elevation: 4,
+              color: Colors.blue.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Seu Saldo:',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
+                    ),
+                    Text(
+                      'R\$ ${balance.toStringAsFixed(2).replaceAll('.', ',')}', 
+                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.green),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 25),
+
+            const Text(
+              'Meus Gastos:',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+
+            // Dynamic expense tracker list
+            Expanded(
+              child: expenseHistory.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Nenhum gasto cadastrado ainda.',
+                        style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.grey),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: expenseHistory.length,
+                      itemBuilder: (context, index) {
+                        final item = expenseHistory[index];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.redAccent,
+                              child: Icon(Icons.trending_down, color: Colors.white),
+                            ),
+                            title: Text(
+                              item.name,
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            ),
+                            trailing: Text(
+                              '- R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                              style: const TextStyle(fontSize: 18, color: Colors.red, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            const SizedBox(height: 20),
+
+            // Navigation button to launch the expense creation form
+            SizedBox(
+              width: double.infinity, 
+              height: 60, 
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const FormScreen()),
+                  );
+
+                  // Update application state if a valid Expense object is returned
+                  if (result != null && result is Expense) {
+                    setState(() {
+                      balance = balance - result.amount;
+                      expenseHistory.add(result); 
+                    });
+                  }
+                },
+                icon: const Icon(Icons.add, size: 28),
+                label: const Text(
+                  'Adicionar Gasto', 
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FormScreen extends StatelessWidget {
+  const FormScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController amountController = TextEditingController();
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.blue,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text(
+          'Novo Gasto', 
+          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Onde você gastou?',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: nameController, 
+              style: const TextStyle(fontSize: 20),
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Ex: Supermercado, Farmácia...',
+              ),
+            ),
+            const SizedBox(height: 30),
+
+            const Text(
+              'Qual o valor?',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: amountController, 
+              style: const TextStyle(fontSize: 20),
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                prefixText: 'R\$ ',
+                prefixStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: ElevatedButton(
+                onPressed: () {
+                  // Parses local text format safely into numeric double data type
+                  double? parsedAmount = double.tryParse(amountController.text.replaceAll(',', '.'));
+                  String parsedName = nameController.text.trim().isEmpty ? "Gasto Geral" : nameController.text;
+                  
+                  // Form validation logic to avoid corrupted states or zero values
+                  if (parsedAmount == null || parsedAmount <= 0) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        backgroundColor: Colors.redAccent,
+                        content: Text(
+                          'Por favor, digite um valor válido para o gasto.',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  } else {
+                    // Pops the route stack returning the configured object
+                    Navigator.pop(
+                      context, 
+                      Expense(name: parsedName, amount: parsedAmount),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text(
+                  'Salvar Gasto',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

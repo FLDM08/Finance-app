@@ -57,3 +57,6 @@ Make sure you have the Flutter SDK installed and configured on your machine.
 ```bash
    flutter run
 ```
+
+##
+* **App icon:** Created by Round Icons - [Unsplash](https://unsplash.com/@roundicons/illustrations).

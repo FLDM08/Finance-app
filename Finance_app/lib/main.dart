@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 part 'main.g.dart';
 
@@ -173,7 +174,7 @@ class _MainScreenState extends State<MainScreen> {
     final List<Widget> tabs = [
       HomeTab(username: username, balance: balance),
       HistoryTab(history: transactionHistory, onUpdate: () => loadFinancialData()),
-      const ReportsTab(),
+      ReportsTab(history: transactionHistory),
     ];
 
     return Scaffold(
@@ -216,6 +217,7 @@ class _MainScreenState extends State<MainScreen> {
           onDestinationSelected: (index) {
             setState(() {
               currentTab = index;
+              loadFinancialData(); // Força a atualização síncrona dos dados ao alternar abas
             });
           },
           destinations: const [
@@ -365,32 +367,135 @@ class HistoryTab extends StatelessWidget {
   }
 }
 
-// ================= TAB 3: REPORTS (PLACEHOLDER) =================
+// ================= TAB 3: REPORTS WITH LIVE PIE CHART =================
 class ReportsTab extends StatelessWidget {
-  const ReportsTab({super.key});
+  final List<Transaction> history;
+
+  const ReportsTab({super.key, required this.history});
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.analytics_outlined, size: 80, color: Colors.grey),
-            SizedBox(height: 20),
-            Text(
-              'Área de Relatórios',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10),
-            Text(
-              'Aqui vamos construir o gráfico de pizza para agrupar os seus gastos por categorias mensalmente.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 18, color: Colors.grey),
-            ),
-          ],
+    final onlyExpenses = history.where((t) => t.isExpense).toList();
+
+    if (onlyExpenses.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.pie_chart_outline, size: 80, color: Colors.grey),
+              SizedBox(height: 20),
+              Text(
+                'Sem dados para o gráfico',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.grey),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Adicione um ou mais gastos para ver a distribuição visual do seu dinheiro.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            ],
+          ),
         ),
+      );
+    }
+
+    Map<String, double> aggregatedExpenses = {};
+    for (var expense in onlyExpenses) {
+      String keyName = expense.name.trim();
+      aggregatedExpenses[keyName] = (aggregatedExpenses[keyName] ?? 0.0) + expense.amount;
+    }
+
+    final List<Color> colorPalette = [
+      Colors.redAccent,
+      Colors.orangeAccent,
+      Colors.purpleAccent,
+      Colors.amber,
+      Colors.cyan,
+      Colors.pinkAccent,
+      Colors.teal,
+    ];
+
+    int colorIndex = 0;
+    List<PieChartSectionData> chartSections = aggregatedExpenses.entries.map((entry) {
+      final color = colorPalette[colorIndex % colorPalette.length];
+      colorIndex++;
+
+      return PieChartSectionData(
+        color: color,
+        value: entry.value,
+        title: 'R\$ ${entry.value.toStringAsFixed(0)}',
+        radius: 60,
+        titleStyle: const TextStyle(
+          fontSize: 16, 
+          fontWeight: FontWeight.bold, 
+          color: Colors.white,
+        ),
+      );
+    }).toList();
+
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Para onde vai o seu dinheiro:', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 30),
+          
+          SizedBox(
+            height: 200,
+            child: PieChart(
+              PieChartData(
+                sections: chartSections,
+                centerSpaceRadius: 40,
+                sectionsSpace: 2,
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 30),
+          const Text('Legenda:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          
+          Expanded(
+            child: ListView(
+              children: aggregatedExpenses.keys.toList().asMap().entries.map((entry) {
+                int idx = entry.key;
+                String name = entry.value;
+                Color legendColor = colorPalette[idx % colorPalette.length];
+                double totalValue = aggregatedExpenses[name]!;
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: legendColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 15),
+                      Text(
+                        name,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'R\$ ${totalValue.toStringAsFixed(2).replaceAll('.', ',')}',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
       ),
     );
   }

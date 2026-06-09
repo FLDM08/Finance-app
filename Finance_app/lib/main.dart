@@ -5,7 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 part 'main.g.dart';
 
 @HiveType(typeId: 0)
-class Transaction { 
+class Transaction { // Renamed from Transacao to Transaction to align with the generated adapter
   @HiveField(0)
   final String name;
 
@@ -15,22 +15,24 @@ class Transaction {
   @HiveField(2)
   final DateTime date;
 
-  @HiveField(3)
+  @HiveField(3) // true represents an expense (outflow), false represents an income (inflow)
   final bool isExpense;
 
   Transaction({
     required this.name, 
     required this.amount, 
-    required this.date, 
-    this.isExpense = true,
+    required this.date,
+    required this.isExpense,
   });
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  Hive.registerAdapter(TransactionAdapter()); // <-- Alinhado com o main.g.dart
-  await Hive.openBox<Transaction>('expenses_box'); // <-- Alinhado com o main.g.dart
+  
+  // Registers the typed transaction adapter and opens the persistent local box
+  Hive.registerAdapter(TransactionAdapter());
+  await Hive.openBox<Transaction>('transactions_box'); 
 
   final prefs = await SharedPreferences.getInstance();
   final String? savedUsername = prefs.getString('username_key');
@@ -147,9 +149,9 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  double balance = 1500.00;
-  final Box<Transaction> expenseBox = Hive.box<Transaction>('expenses_box');
-  List<Transaction> expenseHistory = [];
+  double balance = 0.00; 
+  final Box<Transaction> transactionBox = Hive.box<Transaction>('transactions_box');
+  List<Transaction> transactionHistory = [];
 
   @override
   void initState() {
@@ -157,13 +159,19 @@ class _MainScreenState extends State<MainScreen> {
     loadFinancialData();
   }
 
-  // Isolates local storage fetch operations and computes wallet balances dynamically
+  // Parses ledger items dynamically computing both additions and deductions from zero base
   void loadFinancialData() {
-    expenseHistory = expenseBox.values.toList();
-    double computedBalance = 1500.00;
-    for (var expense in expenseHistory) {
-      computedBalance = computedBalance - expense.amount;
+    transactionHistory = transactionBox.values.toList();
+    double computedBalance = 0.00; 
+    
+    for (var item in transactionHistory) {
+      if (item.isExpense) {
+        computedBalance -= item.amount; 
+      } else {
+        computedBalance += item.amount; 
+      }
     }
+    
     setState(() {
       balance = computedBalance;
     });
@@ -199,12 +207,16 @@ class _MainScreenState extends State<MainScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Seu Saldo:',
+                      'Seu Saldo Total:',
                       style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
                     ),
                     Text(
                       'R\$ ${balance.toStringAsFixed(2).replaceAll('.', ',')}', 
-                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.green),
+                      style: TextStyle(
+                        fontSize: 26, 
+                        fontWeight: FontWeight.bold, 
+                        color: balance >= 0 ? Colors.green : Colors.red,
+                      ),
                     ),
                   ],
                 ),
@@ -213,31 +225,30 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 25),
 
             const Text(
-              'Meus Gastos:',
+              'Histórico de Movimentações:',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
 
             Expanded(
-              child: expenseHistory.isEmpty
+              child: transactionHistory.isEmpty
                   ? const Center(
                       child: Text(
-                        'Nenhum gasto cadastrado ainda.',
+                        'Nenhuma movimentação ainda.',
                         style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.grey),
                       ),
                     )
                   : ListView.builder(
-                      itemCount: expenseHistory.length,
+                      itemCount: transactionHistory.length,
                       itemBuilder: (context, index) {
-                        final item = expenseHistory[index];
+                        final item = transactionHistory[index];
                         String day = item.date.day.toString().padLeft(2, '0');
                         String month = item.date.month.toString().padLeft(2, '0');
                         String formattedDate = "$day/$month";
 
-                        // Implements swift swipe-to-delete contextual action mechanics
                         return Dismissible(
-                          key: Key(item.date.millisecondsSinceEpoch.toString()), 
-                          direction: DismissDirection.endToStart, 
+                          key: Key(item.date.millisecondsSinceEpoch.toString()),
+                          direction: DismissDirection.endToStart,
                           background: Container(
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -245,34 +256,38 @@ class _MainScreenState extends State<MainScreen> {
                             child: const Icon(Icons.delete, color: Colors.white, size: 32),
                           ),
                           onDismissed: (direction) {
-                            expenseBox.deleteAt(index);
-                            
+                            transactionBox.deleteAt(index);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Gasto "${item.name}" apagado com sucesso!'),
-                              ),
+                              SnackBar(content: Text('"${item.name}" removido!')),
                             );
-
                             loadFinancialData();
                           },
                           child: Card(
                             margin: const EdgeInsets.symmetric(vertical: 6.0),
+                            child: ListTile,
                             child: ListTile(
-                              leading: const CircleAvatar(
-                                backgroundColor: Colors.redAccent,
-                                child: Icon(Icons.trending_down, color: Colors.white),
+                              leading: CircleAvatar(
+                                backgroundColor: item.isExpense ? Colors.redAccent : Colors.greenAccent.shade700,
+                                child: Icon(
+                                  item.isExpense ? Icons.trending_down : Icons.trending_up, 
+                                  color: Colors.white,
+                                ),
                               ),
                               title: Text(
                                 item.name,
                                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                               ),
                               subtitle: Text(
-                                "Adicionado em $formattedDate",
+                                "Registrado em $formattedDate",
                                 style: const TextStyle(fontSize: 16, color: Colors.grey),
                               ),
                               trailing: Text(
-                                '- R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                                style: const TextStyle(fontSize: 18, color: Colors.red, fontWeight: FontWeight.bold),
+                                '${item.isExpense ? "-" : "+"} R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                                style: TextStyle(
+                                  fontSize: 18, 
+                                  color: item.isExpense ? Colors.red : Colors.green.shade700, 
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
                           ),
@@ -293,13 +308,13 @@ class _MainScreenState extends State<MainScreen> {
                   );
 
                   if (result != null && result is Transaction) {
-                    await expenseBox.add(result);
-                    loadFinancialData(); 
+                    await transactionBox.add(result);
+                    loadFinancialData();
                   }
                 },
-                icon: const Icon(Icons.add, size: 28),
-                label: const Text(
-                  'Adicionar Gasto', 
+                icon: const Icon(Icons.add_card, size: 28),
+                title: const Text(
+                  'Novo Registro (Ganho/Gasto)', 
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -315,39 +330,89 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-class FormScreen extends StatelessWidget {
+class FormScreen extends StatefulWidget {
   const FormScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final TextEditingController nameController = TextEditingController();
-    final TextEditingController amountController = TextEditingController();
+  State<FormScreen> createState() => _FormScreenState();
+}
 
+class _FormScreenState extends State<FormScreen> {
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController amountController = TextEditingController();
+  
+  bool operationIsExpense = true;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
-          'Novo Gasto', 
+          'Novo Registro', 
           style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Padding(
+      body: SingleChildScrollView( 
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Onde você gastou?',
+              'Que tipo de registro é este?',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: () => setState(() => operationIsExpense = true),
+                      icon: const Icon(Icons.trending_down),
+                      label: const Text('Gasto (Saída)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: operationIsExpense ? Colors.redAccent : Colors.grey.shade200,
+                        foregroundColor: operationIsExpense ? Colors.white : Colors.black80,
+                        elevation: operationIsExpense ? 4 : 0,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: () => setState(() => operationIsExpense = false),
+                      icon: const Icon(Icons.trending_up),
+                      label: const Text('Ganho (Entrada)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: !operationIsExpense ? Colors.green.shade600 : Colors.grey.shade200,
+                        foregroundColor: !operationIsExpense ? Colors.white : Colors.black80,
+                        elevation: !operationIsExpense ? 4 : 0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 35),
+
+            const Text(
+              'Descrição / Identificação:',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: nameController, 
               style: const TextStyle(fontSize: 20),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Ex: Supermercado, Farmácia...',
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                hintText: operationIsExpense ? 'Ex: Farmácia, Mercado...' : 'Ex: Aposentadoria, Pix do Filho...',
               ),
             ),
             const SizedBox(height: 30),
@@ -375,32 +440,36 @@ class FormScreen extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () {
                   double? parsedAmount = double.tryParse(amountController.text.replaceAll(',', '.'));
-                  String parsedName = nameController.text.trim().isEmpty ? "Gasto Geral" : nameController.text;
+                  String parsedName = nameController.text.trim().isEmpty 
+                      ? (operationIsExpense ? "Gasto Geral" : "Ganho Geral") 
+                      : nameController.text;
                   
                   if (parsedAmount == null || parsedAmount <= 0) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         backgroundColor: Colors.redAccent,
-                        content: Text(
-                          'Por favor, digite um valor válido para o gasto.',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
+                        content: Text('Por favor, digite um valor válido.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         duration: Duration(seconds: 3),
                       ),
                     );
                   } else {
                     Navigator.pop(
                       context, 
-                      Transaction(name: parsedName, amount: parsedAmount, date: DateTime.now()),
+                      Transaction(
+                        name: parsedName, 
+                        amount: parsedAmount, 
+                        date: DateTime.now(),
+                        isExpense: operationIsExpense, 
+                      ),
                     );
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: Colors.blue.shade700,
                   foregroundColor: Colors.white,
                 ),
                 child: const Text(
-                  'Salvar Gasto',
+                  'Confirmar e Salvar',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 ),
               ),

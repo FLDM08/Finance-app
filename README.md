@@ -27,3 +27,36 @@ The core implementation prioritizes privacy and performance by working **100% of
 
 - Data types are structured under a unified `Transacao` model with a boolean evaluator (`isGasto`) to avoid redundant database schemas.
 - Before rendering charts, the system processes raw transaction values using a HashMap-based aggregation logic to prevent visual clutter and guarantee data clarity.
+## 💻 Getting Started
+
+### Prerequisites
+Make sure you have the Flutter SDK installed and configured on your machine.
+
+### Installation
+1. Clone the repository:
+```bash
+   git clone [https://github.com/FLDM08/Finance-app.git](https://github.com/FLDM08/Finance-app.git)
+
+    Navigate to the project directory:
+
+Bash
+
+   cd Finance-app
+
+    Fetch dependencies:
+
+Bash
+
+   flutter pub get
+
+    Run code generation for Hive adapters:
+
+Bash
+
+   flutter pub run build_runner build --delete-conflicting-outputs
+
+    Launch the application:
+
+Bash
+
+   flutter run

@@ -1,28 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+part 'main.g.dart';
+
+@HiveType(typeId: 0)
+class Transaction { // Unified model handling both incomes and expenses
+  @HiveField(0)
+  final String name;
+
+  @HiveField(1)
+  final double amount;
+
+  @HiveField(2)
+  final DateTime date;
+
+  @HiveField(3) // Flags operational type: true evaluating to expense/cash-out, false to income/cash-in
+  final bool isExpense;
+
+  Transaction({
+    required this.name, 
+    required this.amount, 
+    required this.date,
+    required this.isExpense,
+  });
+}
 
 void main() async {
-  // Ensures engine services (like local storage device interfaces) are ready before running the app
   WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
   
-  // Initializes SharedPreferences and fetches persistent username if available
+  // Registers database adapter structures and boots core storage pipeline
+  Hive.registerAdapter(TransactionAdapter());
+  await Hive.openBox<Transaction>('transactions_box'); 
+
   final prefs = await SharedPreferences.getInstance();
   final String? savedUsername = prefs.getString('username_key');
 
   runApp(AccessibleFinanceApp(username: savedUsername));
 }
 
-// Data model representing an expense entry with timestamp details
-class Expense {
-  final String name;
-  final double amount;
-  final DateTime date;
-
-  Expense({required this.name, required this.amount, required this.date});
-}
-
 class AccessibleFinanceApp extends StatelessWidget {
-  final String? username; // Passed down from initial async main thread lifecycle
+  final String? username;
 
   const AccessibleFinanceApp({super.key, this.username});
 
@@ -35,13 +54,11 @@ class AccessibleFinanceApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      // Routine evaluation: Decides whether to onboarding flow or direct system routing
       home: username == null ? const OnboardingScreen() : MainScreen(username: username!),
     );
   }
 }
 
-// Onboarding flow view to secure profile initialization on first boot
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
@@ -64,11 +81,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    // Persists the primitive data block securely within local preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('username_key', username);
 
-    // Forces persistent page routing avoiding backtracking stack vulnerabilities
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -125,7 +140,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 }
 
 class MainScreen extends StatefulWidget {
-  final String username; 
+  final String username;
 
   const MainScreen({super.key, required this.username});
 
@@ -134,8 +149,33 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  double balance = 1500.00;
-  List<Expense> expenseHistory = [];
+  double balance = 0.00; 
+  final Box<Transaction> transactionBox = Hive.box<Transaction>('transactions_box');
+  List<Transaction> transactionHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadTransactions();
+  }
+
+  // Parses box history data and computes financial parameters dynamically
+  void loadTransactions() {
+    transactionHistory = transactionBox.values.toList();
+    double computedBalance = 0.00; 
+    
+    for (var item in transactionHistory) {
+      if (item.isExpense) {
+        computedBalance -= item.amount; 
+      } else {
+        computedBalance += item.amount; 
+      }
+    }
+    
+    setState(() {
+      balance = computedBalance;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -167,12 +207,16 @@ class _MainScreenState extends State<MainScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Seu Saldo:',
+                      'Seu Saldo Total:',
                       style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
                     ),
                     Text(
                       'R\$ ${balance.toStringAsFixed(2).replaceAll('.', ',')}', 
-                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.green),
+                      style: TextStyle(
+                        fontSize: 26, 
+                        fontWeight: FontWeight.bold, 
+                        color: balance >= 0 ? Colors.green : Colors.red,
+                      ),
                     ),
                   ],
                 ),
@@ -181,45 +225,69 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 25),
 
             const Text(
-              'Meus Gastos:',
+              'Histórico de Movimentações:',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
 
             Expanded(
-              child: expenseHistory.isEmpty
+              child: transactionHistory.isEmpty
                   ? const Center(
                       child: Text(
-                        'Nenhum gasto cadastrado ainda.',
+                        'Nenhum movimentação ainda.',
                         style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.grey),
                       ),
                     )
                   : ListView.builder(
-                      itemCount: expenseHistory.length,
+                      itemCount: transactionHistory.length,
                       itemBuilder: (context, index) {
-                        final item = expenseHistory[index];
+                        final item = transactionHistory[index];
                         String day = item.date.day.toString().padLeft(2, '0');
                         String month = item.date.month.toString().padLeft(2, '0');
                         String formattedDate = "$day/$month";
 
-                        return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 6.0),
-                          child: ListTile(
-                            leading: const CircleAvatar(
-                              backgroundColor: Colors.redAccent,
-                              child: Icon(Icons.trending_down, color: Colors.white),
-                            ),
-                            title: Text(
-                              item.name,
-                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                            ),
-                            subtitle: Text(
-                              "Adicionado em $formattedDate",
-                              style: const TextStyle(fontSize: 16, color: Colors.grey),
-                            ),
-                            trailing: Text(
-                              '- R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                              style: const TextStyle(fontSize: 18, color: Colors.red, fontWeight: FontWeight.bold),
+                        return Dismissible(
+                          key: Key(item.date.millisecondsSinceEpoch.toString()),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                            color: Colors.redAccent,
+                            child: const Icon(Icons.delete, color: Colors.white, size: 32),
+                          ),
+                          onDismissed: (direction) {
+                            transactionBox.deleteAt(index);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('"${item.name}" removido!')),
+                            );
+                            loadTransactions();
+                          },
+                          child: Card(
+                            margin: const EdgeInsets.symmetric(vertical: 6.0),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: item.isExpense ? Colors.redAccent : Colors.greenAccent.shade700,
+                                child: Icon(
+                                  item.isExpense ? Icons.trending_down : Icons.trending_up, 
+                                  color: Colors.white,
+                                ),
+                              ),
+                              title: Text(
+                                item.name,
+                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text(
+                                "Registrado em $formattedDate",
+                                style: const TextStyle(fontSize: 16, color: Colors.grey),
+                              ),
+                              trailing: Text(
+                                '${item.isExpense ? "-" : "+"} R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                                style: TextStyle(
+                                  fontSize: 18, 
+                                  color: item.isExpense ? Colors.red : Colors.green.shade700, 
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
                         );
@@ -238,16 +306,14 @@ class _MainScreenState extends State<MainScreen> {
                     MaterialPageRoute(builder: (context) => const FormScreen()),
                   );
 
-                  if (result != null && result is Expense) {
-                    setState(() {
-                      balance = balance - result.amount;
-                      expenseHistory.add(result); 
-                    });
+                  if (result != null && result is Transaction) {
+                    await transactionBox.add(result);
+                    loadTransactions();
                   }
                 },
-                icon: const Icon(Icons.add, size: 28),
+                icon: const Icon(Icons.add_card, size: 28),
                 label: const Text(
-                  'Adicionar Gasto', 
+                  'Novo Registro (Ganho/Gasto)', 
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -263,39 +329,90 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-class FormScreen extends StatelessWidget {
+class FormScreen extends StatefulWidget {
   const FormScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final TextEditingController nameController = TextEditingController();
-    final TextEditingController amountController = TextEditingController();
+  State<FormScreen> createState() => _FormScreenState();
+}
 
+class _FormScreenState extends State<FormScreen> {
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController amountController = TextEditingController();
+  
+  // Runtime interface state controller to match operational choice flows
+  bool operationIsExpense = true;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
-          'Novo Gasto', 
+          'Novo Registro', 
           style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Padding(
+      body: SingleChildScrollView( 
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Onde você gastou?',
+              'Que tipo de registro é este?',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: () => setState(() => operationIsExpense = true),
+                      icon: const Icon(Icons.trending_down),
+                      label: const Text('Gasto (Saída)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: operationIsExpense ? Colors.redAccent : Colors.grey.shade200,
+                        foregroundColor: operationIsExpense ? Colors.white : Colors.black,
+                        elevation: operationIsExpense ? 4 : 0,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: SizedBox(
+                    height: 55,
+                    child: ElevatedButton.icon(
+                      onPressed: () => setState(() => operationIsExpense = false),
+                      icon: const Icon(Icons.trending_up),
+                      label: const Text('Ganho (Entrada)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: !operationIsExpense ? Colors.green.shade600 : Colors.grey.shade200,
+                        foregroundColor: !operationIsExpense ? Colors.white : Colors.black,
+                        elevation: !operationIsExpense ? 4 : 0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 35),
+
+            const Text(
+              'Descrição / Identificação:',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: nameController, 
               style: const TextStyle(fontSize: 20),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Ex: Supermercado, Farmácia...',
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                hintText: operationIsExpense ? 'Ex: Farmácia, Mercado...' : 'Ex: Aposentadoria, Pix do Filho...',
               ),
             ),
             const SizedBox(height: 30),
@@ -323,32 +440,36 @@ class FormScreen extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () {
                   double? parsedAmount = double.tryParse(amountController.text.replaceAll(',', '.'));
-                  String parsedName = nameController.text.trim().isEmpty ? "Gasto Geral" : nameController.text;
+                  String parsedName = nameController.text.trim().isEmpty 
+                      ? (operationIsExpense ? "Gasto Geral" : "Ganho Geral") 
+                      : nameController.text;
                   
                   if (parsedAmount == null || parsedAmount <= 0) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         backgroundColor: Colors.redAccent,
-                        content: Text(
-                          'Por favor, digite um valor válido para o gasto.',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
+                        content: Text('Por favor, digite um valor válido.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         duration: Duration(seconds: 3),
                       ),
                     );
                   } else {
                     Navigator.pop(
                       context, 
-                      Expense(name: parsedName, amount: parsedAmount, date: DateTime.now()),
+                      Transaction(
+                        name: parsedName, 
+                        amount: parsedAmount, 
+                        date: DateTime.now(),
+                        isExpense: operationIsExpense, 
+                      ),
                     );
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: Colors.blue.shade700,
                   foregroundColor: Colors.white,
                 ),
                 child: const Text(
-                  'Salvar Gasto',
+                  'Confirmar e Salvar',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                 ),
               ),

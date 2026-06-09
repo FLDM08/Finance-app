@@ -57,6 +57,10 @@ Make sure you have the Flutter SDK installed and configured on your machine.
 ```bash
    flutter run
 ```
+##
+[📥 Download App (Android)](https://github.com/FLDM08/Finance-app/releases/download/v1.0.0/finance-app-FAT-release.apk)
+
+For smaller files check the most recent release
 
 ##
 * **App icon:** Created by Round Icons - [Unsplash](https://unsplash.com/@roundicons/illustrations).

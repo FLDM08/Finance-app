@@ -5,34 +5,24 @@ import 'package:hive_flutter/hive_flutter.dart';
 part 'main.g.dart';
 
 @HiveType(typeId: 0)
-class Transaction { // Renamed from Transacao to Transaction to align with the generated adapter
+class Transaction {
   @HiveField(0)
   final String name;
-
   @HiveField(1)
   final double amount;
-
   @HiveField(2)
   final DateTime date;
-
-  @HiveField(3) // true represents an expense (outflow), false represents an income (inflow)
+  @HiveField(3)
   final bool isExpense;
 
-  Transaction({
-    required this.name, 
-    required this.amount, 
-    required this.date,
-    required this.isExpense,
-  });
+  Transaction({required this.name, required this.amount, required this.date, required this.isExpense});
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  
-  // Registers the typed transaction adapter and opens the persistent local box
   Hive.registerAdapter(TransactionAdapter());
-  await Hive.openBox<Transaction>('transactions_box'); 
+  await Hive.openBox<Transaction>('transactions_box');
 
   final prefs = await SharedPreferences.getInstance();
   final String? savedUsername = prefs.getString('username_key');
@@ -42,7 +32,6 @@ void main() async {
 
 class AccessibleFinanceApp extends StatelessWidget {
   final String? username;
-
   const AccessibleFinanceApp({super.key, this.username});
 
   @override
@@ -54,23 +43,23 @@ class AccessibleFinanceApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: username == null ? const OnboardingScreen() : MainScreen(username: username!),
+      home: username == null ? const OnboardingScreen() : const MainScreen(),
     );
   }
 }
 
+// --- ONBOARDING SCREEN ---
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
-
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final TextEditingController usernameController = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
 
   void saveProfile() async {
-    String username = usernameController.text.trim();
+    String username = nameController.text.trim();
     if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -80,14 +69,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       );
       return;
     }
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('username_key', username);
 
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => MainScreen(username: username)),
+        MaterialPageRoute(builder: (context) => const MainScreen()),
       );
     }
   }
@@ -112,7 +100,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             const SizedBox(height: 15),
             TextField(
-              controller: usernameController,
+              controller: nameController,
               style: const TextStyle(fontSize: 20),
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
@@ -125,10 +113,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               height: 60,
               child: ElevatedButton(
                 onPressed: saveProfile,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                ),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
                 child: const Text('Começar', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               ),
             ),
@@ -139,39 +124,45 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
+// --- MAIN SCREEN: NAVIGATION HUB ---
 class MainScreen extends StatefulWidget {
-  final String username;
-
-  const MainScreen({super.key, required this.username});
+  const MainScreen({super.key});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
-  double balance = 0.00; 
+  int currentTab = 0;
+  double balance = 0.00;
+  String username = '';
   final Box<Transaction> transactionBox = Hive.box<Transaction>('transactions_box');
   List<Transaction> transactionHistory = [];
 
   @override
   void initState() {
     super.initState();
+    loadUserData();
     loadFinancialData();
   }
 
-  // Parses ledger items dynamically computing both additions and deductions from zero base
+  void loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      username = prefs.getString('username_key') ?? 'Usuário';
+    });
+  }
+
   void loadFinancialData() {
     transactionHistory = transactionBox.values.toList();
-    double computedBalance = 0.00; 
-    
+    double computedBalance = 0.00;
     for (var item in transactionHistory) {
       if (item.isExpense) {
-        computedBalance -= item.amount; 
+        computedBalance -= item.amount;
       } else {
-        computedBalance += item.amount; 
+        computedBalance += item.amount;
       }
     }
-    
     setState(() {
       balance = computedBalance;
     });
@@ -179,6 +170,12 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final List<Widget> tabs = [
+      HomeTab(username: username, balance: balance),
+      HistoryTab(history: transactionHistory, onUpdate: () => loadFinancialData()),
+      const ReportsTab(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
@@ -187,140 +184,55 @@ class _MainScreenState extends State<MainScreen> {
           style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Olá, ${widget.username}!',
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+      body: tabs[currentTab],
+      
+      floatingActionButton: currentTab == 2 
+          ? null 
+          : FloatingActionButton.extended(
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FormScreen()),
+                );
+                if (result != null && result is Transaction) {
+                  await transactionBox.add(result);
+                  loadFinancialData();
+                }
+              },
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add, size: 28),
+              label: const Text('Novo Registro', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
-            const SizedBox(height: 20), 
-            
-            Card(
-              elevation: 4,
-              color: Colors.blue.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Seu Saldo Total:',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500),
-                    ),
-                    Text(
-                      'R\$ ${balance.toStringAsFixed(2).replaceAll('.', ',')}', 
-                      style: TextStyle(
-                        fontSize: 26, 
-                        fontWeight: FontWeight.bold, 
-                        color: balance >= 0 ? Colors.green : Colors.red,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          labelTextStyle: WidgetStateProperty.all(
+            const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+        child: NavigationBar(
+          selectedIndex: currentTab,
+          onDestinationSelected: (index) {
+            setState(() {
+              currentTab = index;
+            });
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined, size: 30),
+              selectedIcon: Icon(Icons.home, size: 30, color: Colors.blue),
+              label: 'Início',
             ),
-            const SizedBox(height: 25),
-
-            const Text(
-              'Histórico de Movimentações:',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            NavigationDestination(
+              icon: Icon(Icons.list_alt_outlined, size: 30),
+              selectedIcon: Icon(Icons.list_alt, size: 30, color: Colors.blue),
+              label: 'Histórico',
             ),
-            const SizedBox(height: 10),
-
-            Expanded(
-              child: transactionHistory.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Nenhuma movimentação ainda.',
-                        style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: transactionHistory.length,
-                      itemBuilder: (context, index) {
-                        final item = transactionHistory[index];
-                        String day = item.date.day.toString().padLeft(2, '0');
-                        String month = item.date.month.toString().padLeft(2, '0');
-                        String formattedDate = "$day/$month";
-
-                        return Dismissible(
-                          key: Key(item.date.millisecondsSinceEpoch.toString()),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                            color: Colors.redAccent,
-                            child: const Icon(Icons.delete, color: Colors.white, size: 32),
-                          ),
-                          onDismissed: (direction) {
-                            transactionBox.deleteAt(index);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('"${item.name}" removido!')),
-                            );
-                            loadFinancialData();
-                          },
-                          child: Card(
-                            margin: const EdgeInsets.symmetric(vertical: 6.0),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: item.isExpense ? Colors.redAccent : Colors.greenAccent.shade700,
-                                child: Icon(
-                                  item.isExpense ? Icons.trending_down : Icons.trending_up, 
-                                  color: Colors.white,
-                                ),
-                              ),
-                              title: Text(
-                                item.name,
-                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                              ),
-                              subtitle: Text(
-                                "Registrado em $formattedDate",
-                                style: const TextStyle(fontSize: 16, color: Colors.grey),
-                              ),
-                              trailing: Text(
-                                '${item.isExpense ? "-" : "+"} R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                                style: TextStyle(
-                                  fontSize: 18, 
-                                  color: item.isExpense ? Colors.red : Colors.green.shade700, 
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            const SizedBox(height: 20),
-
-            SizedBox(
-              width: double.infinity, 
-              height: 60, 
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const FormScreen()),
-                  );
-
-                  if (result != null && result is Transaction) {
-                    await transactionBox.add(result);
-                    loadFinancialData();
-                  }
-                },
-                icon: const Icon(Icons.add_card, size: 28),
-                label: const Text(
-                  'Novo Registro (Ganho/Gasto)', 
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                ),
-              ),
+            NavigationDestination(
+              icon: Icon(Icons.pie_chart_outline, size: 30),
+              selectedIcon: Icon(Icons.pie_chart, size: 30, color: Colors.blue),
+              label: 'Gráficos',
             ),
           ],
         ),
@@ -329,9 +241,164 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
+// ================= TAB 1: HOME =================
+class HomeTab extends StatelessWidget {
+  final String username;
+  final double balance;
+
+  const HomeTab({super.key, required this.username, required this.balance});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Olá, $username!', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 25),
+          
+          Card(
+            elevation: 4,
+            color: Colors.blue.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Seu Saldo Disponível:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 10),
+                  Text(
+                    'R\$ ${balance.toStringAsFixed(2).replaceAll('.', ',')}', 
+                    style: TextStyle(
+                      fontSize: 36, 
+                      fontWeight: FontWeight.bold, 
+                      color: balance >= 0 ? Colors.green.shade700 : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ================= TAB 2: HISTORY =================
+class HistoryTab extends StatelessWidget {
+  final List<Transaction> history;
+  final VoidCallback onUpdate;
+
+  const HistoryTab({super.key, required this.history, required this.onUpdate});
+
+  @override
+  Widget build(BuildContext context) {
+    final Box<Transaction> transactionBox = Hive.box<Transaction>('transactions_box');
+
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Suas Movimentações', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: history.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Nenhum registro encontrado.',
+                      style: TextStyle(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.grey),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: history.length,
+                    itemBuilder: (context, index) {
+                      final item = history[index];
+                      String day = item.date.day.toString().padLeft(2, '0');
+                      String month = item.date.month.toString().padLeft(2, '0');
+                      String formattedDate = "$day/$month";
+
+                      return Dismissible(
+                        key: Key(item.date.millisecondsSinceEpoch.toString()),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                          color: Colors.redAccent,
+                          child: const Icon(Icons.delete, color: Colors.white, size: 32),
+                        ),
+                        onDismissed: (direction) {
+                          transactionBox.deleteAt(index);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('"${item.name}" removido!')),
+                          );
+                          onUpdate();
+                        },
+                        child: Card(
+                          margin: const EdgeInsets.symmetric(vertical: 6.0),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: item.isExpense ? Colors.redAccent : Colors.greenAccent.shade700,
+                              child: Icon(item.isExpense ? Icons.trending_down : Icons.trending_up, color: Colors.white),
+                            ),
+                            title: Text(item.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                            subtitle: Text("Data: $formattedDate", style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                            trailing: Text(
+                              '${item.isExpense ? "-" : "+"} R\$ ${item.amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                              style: TextStyle(
+                                fontSize: 18, 
+                                color: item.isExpense ? Colors.red : Colors.green.shade700, 
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ================= TAB 3: REPORTS (PLACEHOLDER) =================
+class ReportsTab extends StatelessWidget {
+  const ReportsTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.analytics_outlined, size: 80, color: Colors.grey),
+            SizedBox(height: 20),
+            Text(
+              'Área de Relatórios',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Aqui vamos construir o gráfico de pizza para agrupar os seus gastos por categorias mensalmente.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- FORM SCREEN ---
 class FormScreen extends StatefulWidget {
   const FormScreen({super.key});
-
   @override
   State<FormScreen> createState() => _FormScreenState();
 }
@@ -339,7 +406,6 @@ class FormScreen extends StatefulWidget {
 class _FormScreenState extends State<FormScreen> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController amountController = TextEditingController();
-  
   bool operationIsExpense = true;
 
   @override
@@ -348,22 +414,15 @@ class _FormScreenState extends State<FormScreen> {
       appBar: AppBar(
         backgroundColor: Colors.blue,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text(
-          'Novo Registro', 
-          style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-        ),
+        title: const Text('Novo Registro', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
       ),
-      body: SingleChildScrollView( 
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Que tipo de registro é este?',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
+            const Text('Que tipo de registro é este?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            
             Row(
               children: [
                 Expanded(
@@ -400,26 +459,18 @@ class _FormScreenState extends State<FormScreen> {
               ],
             ),
             const SizedBox(height: 35),
-
-            const Text(
-              'Descrição / Identificação:',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
+            const Text('Descrição / Identificação:', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             TextField(
               controller: nameController, 
               style: const TextStyle(fontSize: 20),
               decoration: InputDecoration(
                 border: const OutlineInputBorder(),
-                hintText: operationIsExpense ? 'Ex: Farmácia, Mercado...' : 'Ex: Aposentadoria, Pix do Filho...',
+                hintText: operationIsExpense ? 'Ex: Farmácia, Mercado...' : 'Ex: Aposentadoria, Pix...',
               ),
             ),
             const SizedBox(height: 30),
-
-            const Text(
-              'Qual o valor?',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
+            const Text('Qual o valor?', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             TextField(
               controller: amountController, 
@@ -432,7 +483,6 @@ class _FormScreenState extends State<FormScreen> {
               ),
             ),
             const SizedBox(height: 40),
-
             SizedBox(
               width: double.infinity,
               height: 60,
@@ -454,23 +504,12 @@ class _FormScreenState extends State<FormScreen> {
                   } else {
                     Navigator.pop(
                       context, 
-                      Transaction(
-                        name: parsedName, 
-                        amount: parsedAmount, 
-                        date: DateTime.now(),
-                        isExpense: operationIsExpense, 
-                      ),
+                      Transaction(name: parsedName, amount: parsedAmount, date: DateTime.now(), isExpense: operationIsExpense),
                     );
                   }
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text(
-                  'Confirmar e Salvar',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade700, foregroundColor: Colors.white),
+                child: const Text('Confirmar e Salvar', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
